@@ -141,6 +141,23 @@ a{color:var(--turquoise-fonce)}
 .acces input,.acces select{width:100%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:13px 14px;font-size:16px;margin-bottom:10px;color:#fff}
 .acces select option{color:var(--encre)}
 .acces .btn{background:var(--anis);color:var(--encre);width:100%;padding:15px;margin-top:6px}
+.code-benevole{display:flex;gap:8px}
+.code-benevole input{flex:1;margin:0;text-transform:uppercase;letter-spacing:2px}
+.acces .code-benevole .btn{width:auto;margin:0;padding:0 20px}
+.separe{display:flex;align-items:center;gap:10px;margin:24px 0 14px;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#a9a2cf}
+.separe:before,.separe:after{content:'';flex:1;height:1px;background:rgba(255,255,255,.2)}
+.carte.fixe{cursor:default}
+.carte.fixe .qui{margin:4px 0 0}
+.carte.fixe{padding:8px;border-radius:16px;margin-bottom:8px;min-height:60px}
+.carte.fixe .vis{width:52px;height:52px;border-radius:12px}
+.carte.fixe h3{font-size:16px}
+.acces .code-benevole .btn{flex:none}
+.dates-cles{background:var(--neige);padding-bottom:6px}
+.item.fixe{cursor:default}
+.benevole-pied{background:var(--nuit);padding:0 14px 36px;text-align:center}
+.benevole-pied button{background:none;border:0;color:#cfc9ea;text-decoration:underline;text-underline-offset:3px;font-size:14px;cursor:pointer}
+.code-moi{margin-top:14px;padding:12px 14px;border-radius:14px;background:#fff;color:var(--encre);font-size:14px;line-height:1.4}
+.code-moi b{letter-spacing:2px;font-size:17px}
 .acces .liens{display:flex;justify-content:space-between;margin-top:16px;gap:8px}
 .acces .liens button{background:none;border:0;color:#fff;font-weight:700;font-size:14px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .message{background:rgba(198,214,48,.15);border:1px solid rgba(198,214,48,.5);border-radius:14px;padding:12px 14px;font-size:14px;margin-bottom:14px;line-height:1.4}
@@ -265,7 +282,10 @@ function cadreAcces(titre, texte, contenu, msg, erreur) {
     (msg ? '<div class="message' + (erreur ? ' erreur' : '') + '">' + e(msg) + '</div>' : '') + contenu + '</div>';
 }
 function ecranConnexion(msg, erreur) {
-  cadreAcces('Infos des commissions', 'Le programme, les fiches et les échéances d\'O\'Fest 2027, pour l\'équipe d\'organisation.',
+  cadreAcces('Infos O\'Fest 2027', 'Bénévole : entre le code donné par l\'organisation. Équipe d\'organisation : ton mail et ton mot de passe.',
+    '<form id="fb"><label>Code bénévole</label><div class="code-benevole"><input name="code" autocomplete="off" autocapitalize="characters" ' +
+    'spellcheck="false" required><button class="btn">Entrer</button></div></form>' +
+    '<div class="separe">Équipe d\'organisation</div>' +
     '<form id="f"><label>Adresse mail</label><input name="mail" type="email" autocomplete="username" required>' +
     '<label>Mot de passe</label><input name="mdp" type="password" autocomplete="current-password" required>' +
     '<button class="btn">Se connecter</button></form>' +
@@ -276,6 +296,13 @@ function ecranConnexion(msg, erreur) {
     appel('connexion', [f.mail.value, f.mdp.value], function (r) {
       if (r.erreur) return ecranConnexion(r.erreur, true);
       garderJeton(r.jeton); recharger();
+    });
+  };
+  document.getElementById('fb').onsubmit = function (ev) {
+    ev.preventDefault();
+    appel('entrerBenevole', [ev.target.code.value], function (r) {
+      if (r.erreur) return ecranConnexion(r.erreur, true);
+      garderJeton(r.jeton); etat.jour = null; recharger();
     });
   };
   document.getElementById('demande').onclick = ecranDemande;
@@ -363,6 +390,7 @@ function ecranReset() {
 
 // ---------------------------------------------------------------- vues
 function rendre() {
+  if (etat.d.benevole) { app.className = 'sans-nav'; app.innerHTML = vueBenevole(); return brancher(); }
   app.className = '';
   var html = etat.vue === 'fiche' ? vueFiche() : etat.vue === 'avenir' ? vueAvenir() : etat.vue === 'moi' ? vueMoi() : vueProgramme();
   app.innerHTML = html + nav();
@@ -376,7 +404,6 @@ function nav() {
 function vueProgramme() {
   var d = etat.d, j = etat.jour;
   var fiches = d.fiches.filter(function (f) { return j === 'Partout' ? estPartout(f) : f.jour === j; });
-  var p = d.festival.split('-');
   // juste sous les fiches du jour, pour qu'on le voie sans faire défiler (19/11 : tout en bas, il restait caché sous la barre)
   var idee = '<button class="idee-lien" data-idee="ouvrir">💡 Proposer une amélioration de la page</button>';
   var corps = j === 'Partout'
@@ -392,11 +419,36 @@ function vueProgramme() {
           (t ? '<div class="suite">' + e(t.tache) + (t.echeance ? ' · ' + dateCourte(t.echeance) : '') + '</div>' : f.ouOnEnEst ? '<div class="suite">' + e(f.ouOnEnEst) + '</div>' : '') +
           '</span></button>';
       }).join('') + (fiches.length ? '' : '<p style="color:#cfc9ea">Aucune fiche ce jour-là.</p>') + idee + '</div>';
+  return hero(d) + ongletsJours(d, j) + corps;
+}
+function hero(d) {
+  var p = d.festival.split('-');
   return '<div class="hero" style="background-image:linear-gradient(180deg,rgba(27,18,64,.05),rgba(27,18,64,.2) 55%,rgba(27,18,64,.95)),url(' + img(HERO, 1000) + ')">' +
     '<img class="logo" src="' + img(LOGO, 400) + '" alt="O\'Fest">' +
     '<div class="compte"><div><span>' + (d.joursAvant >= 0 ? 'Plus que' : 'C\'était il y a') + '</span><b>J' + (d.joursAvant >= 0 ? '-' + d.joursAvant : '+' + (-d.joursAvant)) + '</b></div>' +
-    '<div class="dates">' + (+p[2]) + ' ' + MOIS_LONGS[+p[1] - 1].toLowerCase() + ' ' + p[0] + '<small>Métabief · bas des pistes</small></div></div></div>' +
-    '<div class="jours">' + d.jours.map(function (x) { return '<button data-jour="' + e(x) + '" class="' + (x === j ? 'on' : '') + '">' + jourCourt(x) + '</button>'; }).join('') + '</div>' + corps;
+    '<div class="dates">' + (+p[2]) + ' ' + MOIS_LONGS[+p[1] - 1].toLowerCase() + ' ' + p[0] + '<small>Métabief · bas des pistes</small></div></div></div>';
+}
+function ongletsJours(d, j) {
+  return '<div class="jours">' + d.jours.map(function (x) { return '<button data-jour="' + e(x) + '" class="' + (x === j ? 'on' : '') + '">' + jourCourt(x) + '</button>'; }).join('') + '</div>';
+}
+/** Bénévoles (25/11, choix de PH) : un seul écran, en lecture : dates clés, programme par jour, qui contacter (prénoms). */
+function vueBenevole() {
+  var d = etat.d, j = etat.jour;
+  var fiches = d.fiches.filter(function (f) { return j === 'Partout' ? estPartout(f) : f.jour === j; });
+  var dates = d.dates.length ? '<div class="dates-cles"><div class="mois">Dates clés</div>' + d.dates.map(function (x) {
+      var p = x.date.split('-');
+      return '<div class="item fixe"><span class="jour"><b>' + (+p[2]) + '</b><span>' + MOIS[+p[1] - 1] + '</span></span>' +
+        '<span class="txt"><b>' + e(x.quoi) + '</b><small>' + MOIS_LONGS[+p[1] - 1] + ' ' + p[0] + '</small></span></div>';
+    }).join('') + '</div>' : '';
+  var qui = function (f) {
+    return [f.contact ? 'Contact : ' + f.contact : '', f.lien ? 'Lien pilotage : ' + f.lien : ''].filter(Boolean).join(' · ') || 'Contact à venir';
+  };
+  var corps = '<div class="liste">' + fiches.map(function (f) {
+      return '<div class="carte fixe">' + (VISUELS[f.visuel] ? '<span class="vis" style="background-image:url(' + img(VISUELS[f.visuel], 300) + ')"></span>' : '') +
+        '<span><h3>' + e(f.titre) + '</h3><div class="qui">' + e(qui(f)) + '</div></span></div>';
+    }).join('') + (fiches.length ? '' : '<p style="color:#cfc9ea">Rien ce jour-là.</p>') + '</div>';
+  return hero(d) + dates + ongletsJours(d, j) + corps +
+    '<div class="benevole-pied"><button id="deconnexion">Quitter (équipe d\'organisation : entre avec ton mail)</button></div>';
 }
 /** Un rôle de la commission : ce que l'équipe a écrit, puis les personnes validées sur l'application (✓). */
 function role(titre, ecrit, valides) {
@@ -473,6 +525,8 @@ function vueMoi() {
   return '<div class="moi"><h2>' + e(m.nom) + '</h2><p>' + e(m.mail) + '</p><p style="margin-top:10px;color:var(--encre)">' +
     (m.pilotage ? 'Pilotage : tu peux modifier toutes les fiches.' : 'Tu peux modifier les fiches où ton adresse est inscrite.') + '</p>' +
     (etat.d.tableur ? '<a class="btn lien-btn" target="_blank" rel="noopener" href="' + e(etat.d.tableur) + '">Ouvrir le tableur Récap général 2027</a>' : '') +
+    (etat.d.codeBenevoles ? '<div class="code-moi">Code des bénévoles : <b>' + e(etat.d.codeBenevoles) + '</b><br><small>À donner dans le groupe des bénévoles ; ' +
+      'pour le changer, ligne « Code bénévoles » de l\'onglet _Réglages (les bénévoles déjà entrés devront taper le nouveau).</small></div>' : '') +
     blocIdee() + (m.pilotage ? blocAcces() : '') +
     '<button class="btn clair" style="width:100%;margin-top:12px" id="deconnexion">Se déconnecter</button>' +
     '<p style="font-size:13px;margin-top:22px;line-height:1.4">Toutes les infos viennent du tableur « Récap général O\'Fest 2027 » du Drive O\'Sports : une modification faite là-bas apparaît ici en moins d\'une minute.</p></div>';
