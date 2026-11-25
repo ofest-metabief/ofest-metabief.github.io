@@ -157,6 +157,7 @@ a{color:var(--turquoise-fonce)}
 // Vide quand la page est servie par Google ; rempli par site.sh pour la page hébergée sur GitHub Pages (27/10), qui appelle
 // alors le script directement, sans les comptes Google du navigateur.
 var ADRESSE_API = 'https://script.google.com/macros/s/AKfycbx5vn6ryLDrkoizPbvVr1k9wu9ErUSi2YRR9LPQ4bO-ARu3mhqVYT1x0sau-2mOe4ZB/exec';
+var API_GOOGLE = 'https://script.google.com/macros/s/AKfycbx5vn6ryLDrkoizPbvVr1k9wu9ErUSi2YRR9LPQ4bO-ARu3mhqVYT1x0sau-2mOe4ZB/exec';
 var VISUELS = { cine: '1WFRQpU5YZhCohnurtMZYmQckl5EDJtpl', balade: '1BT-NKQAYIKW45NZ-H11t4gcrwIId5u8v', nordic: '1hvn0yLK6XSMfgDV9Li5Z9vGrlUGY1zER',
   vtt: '1_zbTV1nrFiVR_d1YBijElUmHIrxYdtHA', trail: '1lcCGLRxJdsBQy6rj_wCslm9DYF5R2Y3m', multi: '1hKVlInyYspWBu9af7QbJJZoDDXozmSq7',
   adapte: '1kCB1Sn5A6Ki_sK2FeHFYqTXiZg7cDBut', fondue: '1JYNqrxHbT4hZS_8-Qxt5mr2lj2e79ldX', ski: '1XxIV-o7WCUBOmxKdg_U6bhn6n_bP-8Hx' };
@@ -182,11 +183,19 @@ function appel(fn, args, ok) {
   charge(true);
   var reussi = function (r) { charge(false); ok(r); };
   var rate = function (err) { charge(false); toast('Ça n\'a pas marché : ' + (err && err.message || err)); };
-  if (!ADRESSE_API) return google.script.run.withSuccessHandler(reussi).withFailureHandler(rate)[fn].apply(null, args || []);
-  fetch(ADRESSE_API, { method: 'POST', credentials: 'omit', body: JSON.stringify({ f: fn, a: args || [] }) })
-    .then(function (rep) { return rep.json(); })
-    .then(function (x) { if (x.ok) reussi(x.r); else rate(x.erreur); })
-    .catch(function () { rate('pas de réponse du serveur, réessaie dans un instant.'); });
+  var parFetch = function (adresse) {
+    fetch(adresse, { method: 'POST', credentials: 'omit', body: JSON.stringify({ f: fn, a: args || [] }) })
+      .then(function (rep) { return rep.json(); })
+      .then(function (x) { if (x.ok) reussi(x.r); else rate(x.erreur); })
+      .catch(function () { rate('pas de réponse du serveur, réessaie dans un instant.'); });
+  };
+  if (ADRESSE_API) return parFetch(ADRESSE_API);
+  // Adresse Google : un ordinateur connecté à plusieurs comptes Google fait échouer google.script.run (« HTTP 401 », Fanny
+  // le 25/11) ; on refait alors le même appel sans les comptes du navigateur, comme la page hébergée.
+  google.script.run.withSuccessHandler(reussi).withFailureHandler(function (err) {
+    if (/HTTP 40[13]|Authorization is required|PERMISSION_DENIED/i.test(String(err && err.message || err))) return parFetch(API_GOOGLE);
+    rate(err);
+  })[fn].apply(null, args || []);
 }
 /** Page hébergée : la police O'Fest vient du script (elle n'est pas publiée avec la page), gardée dans le navigateur. */
 function chargerPolice() {
@@ -224,7 +233,10 @@ function demarrer() {
       document.body.setAttribute('data-mode', 'reset');
       document.body.setAttribute('data-jeton', String(q.get('j') || '').replace(/[^a-z0-9]/gi, ''));
     }
+    var lienMail = /^(valider|pilotage|refuser)$/.test(q.get('action') || '') && q.get('id') && q.get('j') ?
+      { action: q.get('action'), id: q.get('id'), j: q.get('j') } : null;
     if (location.search) history.replaceState(null, '', location.pathname);
+    if (lienMail) return ecranValidation(lienMail);
   }
   var mode = document.body.getAttribute('data-mode');
   if (mode === 'reset') return ecranReset();
@@ -308,6 +320,28 @@ function ecranOubli() {
       ecranConnexion('Si cette adresse a un accès, le lien vient de partir. Pense à regarder dans les indésirables.');
     });
   };
+}
+/** Lien « Ouvrir l'accès / Pilotage / Refuser » du mail : la demande, puis un bouton (le lien seul ne décide rien). */
+function ecranValidation(v) {
+  var retour = '<div class="liens"><button id="retour">Ouvrir la page d\'infos</button></div>';
+  var brancher = function () { document.getElementById('retour').onclick = function () { etat.jeton ? recharger() : ecranConnexion(); }; };
+  appel('voirDemande', [v.id, v.j], function (d) {
+    if (d.erreur) { cadreAcces('Demande d\'accès', e(d.erreur), retour); return brancher(); }
+    var libelle = { valider: 'Ouvrir l\'accès (sa fiche « ' + (d.fiche || '—') + ' »)', pilotage: 'Ouvrir l\'accès (pilotage : toutes les fiches)',
+                    refuser: 'Refuser la demande' }[v.action];
+    cadreAcces(e(d.nom), e(d.mail) + '<br>Fiche demandée : ' + e(d.fiche || '—') +
+      (d.fiche ? ' (' + (d.roleFiche === 'responsable' ? 'responsable' : 'équipe') + ')' : ''),
+      '<button class="btn" id="b">' + e(libelle) + '</button>' + retour);
+    brancher();
+    document.getElementById('b').onclick = function () {
+      var b = this; b.disabled = true;
+      appel('confirmerValidation', [v.id, v.j, v.action], function (r) {
+        b.remove();
+        var m = document.createElement('div'); m.className = 'message' + (r.ok ? '' : ' erreur'); m.textContent = r.message;
+        document.getElementById('retour').parentNode.before(m);
+      });
+    };
+  });
 }
 function ecranReset() {
   charge(false);
