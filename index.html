@@ -155,6 +155,11 @@ a{color:var(--turquoise-fonce)}
 .dates-cles{background:var(--neige);padding-bottom:6px}
 .item.fixe{cursor:default}
 .benevole-pied{background:var(--nuit);padding:0 14px 36px;text-align:center}
+.benevole-pied .btn{display:block;width:100%;margin:0 0 14px}
+.grille .g-fixe{background:#fff;border-radius:16px;padding:13px 12px;font-weight:700;font-size:14px;min-height:70px;opacity:.8}
+.grille .g-fixe small{display:block;font-weight:400;color:var(--gris);font-size:12px;margin-top:5px}
+.ma-commission{background:var(--nuit);padding:12px 14px 4px}
+.ma-commission .mois{color:var(--anis);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin:0 0 8px}
 .benevole-pied button{background:none;border:0;color:#cfc9ea;text-decoration:underline;text-underline-offset:3px;font-size:14px;cursor:pointer}
 .code-moi{margin-top:14px;padding:12px 14px;border-radius:14px;background:#fff;color:var(--encre);font-size:14px;line-height:1.4}
 .code-moi b{letter-spacing:2px;font-size:17px}
@@ -320,8 +325,10 @@ function ecranDemande() {
       '<option value="equipe">Membre de l\'équipe</option><option value="responsable">Responsable</option></select></div>' +
       '<label>Mot de passe choisi (8 caractères au moins)</label><input name="mdp" type="password" autocomplete="new-password" required>' +
       '<label>Le même, encore une fois</label><input name="mdp2" type="password" autocomplete="new-password" required>' +
-      '<button class="btn">Envoyer ma demande</button></form><div class="liens"><button id="retour">‹ Retour à la connexion</button></div>');
-    document.getElementById('retour').onclick = function () { ecranConnexion(); };
+      '<button class="btn">Envoyer ma demande</button></form><div class="liens"><button id="retour">‹ ' +
+      (etat.d && etat.d.benevole ? 'Retour à la page des bénévoles' : 'Retour à la connexion') + '</button></div>');
+    var benevole = !!(etat.d && etat.d.benevole);
+    document.getElementById('retour').onclick = function () { if (benevole) rendre(); else ecranConnexion(); };
     var formDemande = document.getElementById('f');
     formDemande.fiche.onchange = function () { document.getElementById('role-fiche').style.display = formDemande.fiche.value ? '' : 'none'; };
     formDemande.onsubmit = function (ev) {
@@ -330,7 +337,9 @@ function ecranDemande() {
       if (f.mdp.value !== f.mdp2.value) return toast('Les deux mots de passe ne sont pas les mêmes.');
       appel('demanderAcces', [f.nom.value, f.mail.value, f.fiche.value, f.mdp.value, f.roleFiche.value], function (r) {
         if (r.erreur) return toast(r.erreur);
-        ecranConnexion('Demande envoyée à O\'Sports. Tu recevras un mail dès que ton accès sera ouvert.');
+        var fait = 'Demande envoyée à O\'Sports. Tu recevras un mail dès que ton accès sera ouvert.';
+        if (benevole) { rendre(); return toast(fait); }
+        ecranConnexion(fait);
       });
     };
   };
@@ -401,25 +410,38 @@ function nav() {
   var b = function (v, t) { return '<button data-vue="' + v + '" class="' + ((etat.vue === v || (v === 'programme' && etat.vue === 'fiche')) ? 'on' : '') + '"><i></i>' + t + '</button>'; };
   return '<div class="nav">' + b('programme', 'Programme') + b('avenir', 'À venir') + b('moi', 'Moi' + (etat.d.demandes ? '<span class="badge">' + etat.d.demandes + '</span>' : '')) + '</div>';
 }
+/** Une commission en bref (bénévoles, et commissions des autres pour un compte de commission, 25/11). */
+function carteFixe(f) {
+  var qui = [f.contact ? 'Contact : ' + f.contact : '', f.lien ? 'Lien pilotage : ' + f.lien : ''].filter(Boolean).join(' · ') || 'Contact à venir';
+  return '<div class="carte fixe">' + (VISUELS[f.visuel] ? '<span class="vis" style="background-image:url(' + img(VISUELS[f.visuel], 300) + ')"></span>' : '') +
+    '<span><h3>' + e(f.titre) + '</h3><div class="qui">' + e(qui) + '</div></span></div>';
+}
+function carte(f) {
+  if (f.limitee) return carteFixe(f);
+  var t = f.taches.filter(function (x) { return !x.fait; })[0];
+  return '<button class="carte" data-fiche="' + e(f.onglet) + '"><span class="vis" style="' + (VISUELS[f.visuel] ? 'background-image:url(' + img(VISUELS[f.visuel], 300) + ')' : '') + '"></span>' +
+    '<span><h3>' + e(f.titre) + '</h3><div class="qui">' + e(f.responsable || 'Responsable à désigner') + '</div>' +
+    '<span class="pastille ' + f.statut + '"><i></i>' + e(f.avancement || 'Pas commencé') + '</span>' +
+    (t ? '<div class="suite">' + e(t.tache) + (t.echeance ? ' · ' + dateCourte(t.echeance) : '') + '</div>' : f.ouOnEnEst ? '<div class="suite">' + e(f.ouOnEnEst) + '</div>' : '') +
+    '</span></button>';
+}
 function vueProgramme() {
   var d = etat.d, j = etat.jour;
   var fiches = d.fiches.filter(function (f) { return j === 'Partout' ? estPartout(f) : f.jour === j; });
+  // compte de commission (25/11) : sa ou ses commissions en tête, en entier ; les autres en bref
+  var miennes = d.moi.pilotage ? [] : d.fiches.filter(function (f) { return !f.limitee; });
+  var tete = miennes.length ? '<div class="ma-commission"><div class="mois">' + (miennes.length > 1 ? 'Tes commissions' : 'Ta commission') + '</div>' +
+    miennes.map(carte).join('') + '</div>' : '';
   // juste sous les fiches du jour, pour qu'on le voie sans faire défiler (19/11 : tout en bas, il restait caché sous la barre)
   var idee = '<button class="idee-lien" data-idee="ouvrir">💡 Proposer une amélioration de la page</button>';
   var corps = j === 'Partout'
     ? '<div class="grille">' + fiches.map(function (f) {
+        if (f.limitee) return '<div class="g-fixe">' + e(f.titre) + '<small>' + e(f.contact || 'Contact à venir') + '</small></div>';
         return '<button data-fiche="' + e(f.onglet) + '">' + e(f.titre) + '<small><span class="pt ' + f.statut + '"></span>' +
           e(f.responsable || f.avancement || 'À désigner') + '</small></button>';
       }).join('') + idee + '</div>'
-    : '<div class="liste">' + fiches.map(function (f) {
-        var t = f.taches.filter(function (x) { return !x.fait; })[0];
-        return '<button class="carte" data-fiche="' + e(f.onglet) + '"><span class="vis" style="' + (VISUELS[f.visuel] ? 'background-image:url(' + img(VISUELS[f.visuel], 300) + ')' : '') + '"></span>' +
-          '<span><h3>' + e(f.titre) + '</h3><div class="qui">' + e(f.responsable || 'Responsable à désigner') + '</div>' +
-          '<span class="pastille ' + f.statut + '"><i></i>' + e(f.avancement || 'Pas commencé') + '</span>' +
-          (t ? '<div class="suite">' + e(t.tache) + (t.echeance ? ' · ' + dateCourte(t.echeance) : '') + '</div>' : f.ouOnEnEst ? '<div class="suite">' + e(f.ouOnEnEst) + '</div>' : '') +
-          '</span></button>';
-      }).join('') + (fiches.length ? '' : '<p style="color:#cfc9ea">Aucune fiche ce jour-là.</p>') + idee + '</div>';
-  return hero(d) + ongletsJours(d, j) + corps;
+    : '<div class="liste">' + fiches.map(carte).join('') + (fiches.length ? '' : '<p style="color:#cfc9ea">Aucune fiche ce jour-là.</p>') + idee + '</div>';
+  return hero(d) + tete + ongletsJours(d, j) + corps;
 }
 function hero(d) {
   var p = d.festival.split('-');
@@ -440,15 +462,10 @@ function vueBenevole() {
       return '<div class="item fixe"><span class="jour"><b>' + (+p[2]) + '</b><span>' + MOIS[+p[1] - 1] + '</span></span>' +
         '<span class="txt"><b>' + e(x.quoi) + '</b><small>' + MOIS_LONGS[+p[1] - 1] + ' ' + p[0] + '</small></span></div>';
     }).join('') + '</div>' : '';
-  var qui = function (f) {
-    return [f.contact ? 'Contact : ' + f.contact : '', f.lien ? 'Lien pilotage : ' + f.lien : ''].filter(Boolean).join(' · ') || 'Contact à venir';
-  };
-  var corps = '<div class="liste">' + fiches.map(function (f) {
-      return '<div class="carte fixe">' + (VISUELS[f.visuel] ? '<span class="vis" style="background-image:url(' + img(VISUELS[f.visuel], 300) + ')"></span>' : '') +
-        '<span><h3>' + e(f.titre) + '</h3><div class="qui">' + e(qui(f)) + '</div></span></div>';
-    }).join('') + (fiches.length ? '' : '<p style="color:#cfc9ea">Rien ce jour-là.</p>') + '</div>';
+  var corps = '<div class="liste">' + fiches.map(carteFixe).join('') + (fiches.length ? '' : '<p style="color:#cfc9ea">Rien ce jour-là.</p>') + '</div>';
   return hero(d) + dates + ongletsJours(d, j) + corps +
-    '<div class="benevole-pied"><button id="deconnexion">Quitter (équipe d\'organisation : entre avec ton mail)</button></div>';
+    '<div class="benevole-pied"><button class="btn clair" id="demande-commission">Tu t\'occupes d\'une commission ? Demande ton accès</button>' +
+    '<button id="deconnexion">Quitter (équipe d\'organisation : entre avec ton mail)</button></div>';
 }
 /** Un rôle de la commission : ce que l'équipe a écrit, puis les personnes validées sur l'application (✓). */
 function role(titre, ecrit, valides) {
@@ -457,7 +474,7 @@ function role(titre, ecrit, valides) {
 }
 function vueFiche() {
   var f = fiche(etat.onglet);
-  if (!f) { etat.vue = 'programme'; return vueProgramme(); }
+  if (!f || f.limitee) { etat.vue = 'programme'; return vueProgramme(); }
   var ed = etat.edition, peut = f.peut;
   var modif = function (cle) { return peut ? '<button data-editer="' + cle + '">' + (ed === cle ? 'Fermer' : cle === 'taches' || cle === 'prestataires' || cle === 'documents' ? '+ Ajouter' : 'Modifier') + '</button>' : ''; };
   var faites = f.taches.filter(function (t) { return t.fait; }), aFaire = f.taches.filter(function (t) { return !t.fait; });
@@ -517,13 +534,14 @@ function vueAvenir() {
     }).join('');
   }
   var n = ech.datees.length + ech.sansDate.length;
-  return '<div class="e-tete"><div><h2>Ce qui arrive</h2><p>Toutes les fiches · ' + n + ' tâche' + (n > 1 ? 's' : '') + ' en attente</p></div>' +
+  return '<div class="e-tete"><div><h2>Ce qui arrive</h2><p>' + (etat.d.moi.pilotage ? 'Toutes les fiches' : 'Ta commission') + ' · ' + n + ' tâche' + (n > 1 ? 's' : '') + ' en attente</p></div>' +
     '<span class="pastille">J-' + Math.max(0, etat.d.joursAvant) + '</span></div>' + (html || '<p class="vide" style="padding:18px">Rien en attente.</p>');
 }
 function vueMoi() {
   var m = etat.d.moi;
   return '<div class="moi"><h2>' + e(m.nom) + '</h2><p>' + e(m.mail) + '</p><p style="margin-top:10px;color:var(--encre)">' +
-    (m.pilotage ? 'Pilotage : tu peux modifier toutes les fiches.' : 'Tu peux modifier les fiches où ton adresse est inscrite.') + '</p>' +
+    (m.pilotage ? 'Pilotage : tu vois et tu peux modifier toutes les fiches.' : 'Tu vois en détail et tu modifies ta commission ; les autres s\'affichent en bref. ' +
+      'Pour en suivre une autre, demande au pilotage.') + '</p>' +
     (etat.d.tableur ? '<a class="btn lien-btn" target="_blank" rel="noopener" href="' + e(etat.d.tableur) + '">Ouvrir le tableur Récap général 2027</a>' : '') +
     (etat.d.codeBenevoles ? '<div class="code-moi">Code des bénévoles : <b>' + e(etat.d.codeBenevoles) + '</b><br><small>À donner dans le groupe des bénévoles ; ' +
       'pour le changer, ligne « Code bénévoles » de l\'onglet _Réglages (les bénévoles déjà entrés devront taper le nouveau).</small></div>' : '') +
@@ -574,6 +592,8 @@ function recevoirAcces(r) {
 
 // ---------------------------------------------------------------- gestes
 function brancher() {
+  var dc = document.getElementById('demande-commission');
+  if (dc) dc.onclick = function () { ecranDemande(); window.scrollTo(0, 0); };
   app.querySelectorAll('[data-vue]').forEach(function (b) { b.onclick = function () { etat.vue = b.getAttribute('data-vue'); etat.edition = null; if (etat.vue === 'moi') etat.acces = null; rendre(); window.scrollTo(0, 0); }; });
   app.querySelectorAll('[data-lien]').forEach(function (b) {
     b.onclick = function () { appel('lienPilotage', [etat.jeton, etat.onglet, !!b.getAttribute('data-lien')], recevoir); };
